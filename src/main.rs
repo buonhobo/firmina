@@ -8,7 +8,7 @@ use askama::Template;
 use clap::Parser;
 use dialoguer::Password;
 use env_logger::Env;
-use log::{debug, info};
+use log::{debug, error, info};
 use rexpect::spawn;
 use tempfile::tempdir;
 
@@ -17,40 +17,75 @@ const PKCS11PROV: &[u8] = include_bytes!("../assets/pkcs11prov.so");
 
 #[derive(clap::Parser, Debug)]
 struct Cli {
-    ///Pin della firma
+    #[command(subcommand)]
+    command: Command,
+}
+
+#[derive(clap::Subcommand, Debug)]
+enum Command {
+    ///Firma un documento in CADES usando una smart key
+    Sign(Sign),
+    ///Estrai il contenuto di un file p7m
+    Extract(Extract),
+}
+
+#[derive(clap::Args, Debug)]
+struct Sign {
+    ///Pin della chiave per la firma
     #[arg(short, long)]
     pin: Option<String>,
-    ///File da firmare
-    input_path: PathBuf,
-    ///Percorso del file firmato
+    ///Percorso del file firmato, se non specificato viene messo a fianco all'originale
     #[arg(short, long)]
     output_path: Option<PathBuf>,
-    ///Se produrre la firma separatamente
+    ///Se produrre la firma separatamente, falso di default
     #[arg(short, long, default_value_t = false)]
     detach: bool,
+    ///File da firmare
+    input_path: PathBuf,
+}
+
+#[derive(clap::Args, Debug)]
+struct Extract {
+    ///Percorso del file estratto, se non specificato viene messo a fianco dell'originale
+    #[arg(short, long)]
+    output_path: Option<PathBuf>,
+    ///File da estrarre
+    input_path: PathBuf,
 }
 
 fn main() {
     env_logger::Builder::from_env(Env::default().default_filter_or("firmina=info")).init();
     let cli = Cli::parse();
 
+    match cli.command {
+        Command::Sign(sign) => sign_outer(sign),
+        Command::Extract(e) => extract(e),
+    }
+}
+
+fn sign_outer(sign_command: Sign) {
     debug!("Creating temporary directory to extract the needed libraries");
     let tempdir =
         tempdir().expect("Could not create a temporary directory for the necessary libraries");
     let config_path =
         extract_libs(tempdir.path().into()).expect("Could not extract the necessary openssl libs");
-    sign(cli, config_path);
+
+    sign(sign_command, config_path);
 }
 
-fn sign(sign_command: Cli, openssl_conf: PathBuf) {
-    let Cli {
+fn sign(sign_command: Sign, openssl_conf: PathBuf) {
+    let Sign {
         pin,
         input_path,
         output_path,
         detach,
     } = sign_command;
 
-    info!("Asking user for PIN");
+    if !(input_path.exists() && input_path.is_file()) {
+        panic!("{} does not exist or is not a file", input_path.display())
+    }
+
+    debug!("Asking user for PIN");
     let pin = match pin {
         Some(s) => s,
         None => Password::new()
@@ -80,17 +115,35 @@ fn sign(sign_command: Cli, openssl_conf: PathBuf) {
     info!("Will timeout in {timeout}ms");
     let mut openssl = spawn(&command, Some(timeout)).expect("Could not start openssl process");
 
-    while let Ok(_) = openssl.exp_regex("Enter PKCS#11 .* PIN for .*:") {
+    while let Ok(out) = openssl.exp_regex("Enter PKCS#11 .* PIN for .*:") {
         openssl
             .send_line(&pin)
             .expect("Could not send PIN to openssl");
+        debug!("Forwarding openssl output: \n{}", out.0.trim());
     }
 
-    info!("Done. The output file is: {}", output_path.display());
+    let status = openssl
+        .process()
+        .wait()
+        .expect("Failed while waiting for openssl to exit");
+
+    match status {
+        rexpect::process::WaitStatus::Exited(_, 0) => {
+            info!("Done. The output file is: {}", output_path.display())
+        }
+        rexpect::process::WaitStatus::Exited(_, s) => {
+            error!(
+                "openssl finished with status {}:\n{}",
+                s,
+                openssl.exp_eof().unwrap()
+            );
+        }
+        s => panic!("The openssl command is in an unexpected state: {:?}", s),
+    };
 }
 
 fn extract_libs(temp_dir: PathBuf) -> Result<PathBuf, Error> {
-    info!("Extracting libs into {}", temp_dir.display());
+    debug!("Extracting libs into {}", temp_dir.display());
     let openssl_conf = temp_dir.join("openssl.conf");
     let pkcs11prov = temp_dir.join("pkcs11prov.so");
     let libbit4xpki = temp_dir.join("libbit4xpki.so");
@@ -131,4 +184,64 @@ impl OpensslConf {
             libbit4xpki,
         }
     }
+}
+
+fn extract(extract: Extract) {
+    let Extract {
+        output_path,
+        input_path,
+    } = extract;
+
+    if !(input_path.exists() && input_path.is_file()) {
+        panic!("{} does not exist or is not a file", input_path.display())
+    }
+
+    let output_path = match output_path {
+        Some(p) => p,
+        None => {
+            if input_path.extension().is_some_and(|e| e == "p7m") {
+                input_path
+                    .file_stem()
+                    .expect("Could not get the output path")
+                    .into()
+            } else {
+                input_path.with_added_extension("out")
+            }
+        }
+    };
+
+    let command = format!(
+        "openssl cms -verify -noverify -inform DER -in {} -out {}",
+        input_path.display(),
+        output_path.display()
+    );
+
+    let timeout = 5000;
+
+    info!("Running command: {command}");
+    info!("Will timeout in {timeout}ms");
+    let mut openssl = spawn(&command, Some(timeout)).expect("Could not start openssl process");
+
+    let status = openssl
+        .process()
+        .wait()
+        .expect("Failed while waiting for openssl to exit");
+
+    match status {
+        rexpect::process::WaitStatus::Exited(_, 0) => {
+            debug!(
+                "Forwarding openssl output: \n{}",
+                openssl.exp_eof().unwrap()
+            );
+            info!("Done. The output file is: {}", output_path.display())
+        }
+        rexpect::process::WaitStatus::Exited(_, s) => {
+            error!(
+                "openssl finished with status {}:\n{}",
+                s,
+                openssl.exp_eof().unwrap()
+            );
+        }
+        s => panic!("The openssl command is in an unexpected state: {:?}", s),
+    };
 }
