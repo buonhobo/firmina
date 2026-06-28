@@ -11,12 +11,8 @@ on:
 
 jobs:
   build:
-    name: Build for (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
-
-    strategy:
-      matrix:
-        os: [ubuntu-latest]
+    name: Build for linux
+    runs-on: ubuntu-latest
 
     steps:
       - name: Checkout repo
@@ -33,7 +29,7 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          key: $cargo-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Build
         run: cargo build --release --verbose
@@ -41,6 +37,6 @@ jobs:
       - name: Upload artifacts
         uses: actions/upload-artifact@v7
         with:
-          name: firmina-${{ matrix.os }}
+          name: firmina
           path: |
             target/release/firmina
