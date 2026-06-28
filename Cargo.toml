@@ -1,0 +1,13 @@
+[package]
+name = "firmina"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+askama = "0.16.0"
+clap = { version = "4.6.1", features = ["derive"] }
+dialoguer = "0.12.0"
+env_logger = "0.11.11"
+log = "0.4.33"
+rexpect = "0.7.1"
+tempfile = "3.27.0"
