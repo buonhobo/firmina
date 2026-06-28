@@ -22,3 +22,6 @@ Options:
 - Il PIN puo' essere inserito subito, altrimenti verra' richiesto dal programma.
 - `--detach` permette di produrre la firma con un .p7s invece di un .p7m, la differenza e' che il .p7s non include il file originale al suo interno.
 - `--output-path` permette di specificare il percorso del file criptato. Se non e' specificato allora il file sara' piazzato a fianco dell'originale, con .p7m (oppure .p7s) aggiunto alla fine.
+
+
+E' possibile scaricare l'eseguibile e metterlo in ~/.local/bin per poter usare firmina dal terminale in qualsiasi momento
