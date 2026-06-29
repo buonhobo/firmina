@@ -24,9 +24,9 @@ Arguments:
   <INPUT_PATH>  File da firmare
 
 Options:
-  -p, --pin <PIN>                  Pin della firma
-  -o, --output-path <OUTPUT_PATH>  Percorso del file firmato
-  -d, --detach                     Se produrre la firma separatamente
+  -p, --pin <PIN>                  Pin della chiave per la firma
+  -o, --output-path <OUTPUT_PATH>  Percorso del file firmato, se non specificato viene messo a fianco all'originale
+  -d, --detach                     Se produrre la firma separatamente, falso di default
   -h, --help                       Print help
 ```
 
