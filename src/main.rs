@@ -99,7 +99,7 @@ fn sign(sign_command: Sign, openssl_conf: PathBuf) {
 
     let command = format!(
         "openssl cms -sign -cades -binary {detach} -outform DER \
-        -in {} -out {} \
+        -in \"{}\" -out \"{}\" \
         -signer \"pkcs11:object=DS%20User%20Certificate3;type=cert\" \
         -inkey \"pkcs11:object=DS%20User%20Private%20Key%203;type=private\" \
         -config {}",
@@ -112,7 +112,7 @@ fn sign(sign_command: Sign, openssl_conf: PathBuf) {
     let timeout = 5000;
 
     info!("Running command: {command}");
-    info!("Will timeout in {timeout}ms");
+    debug!("Will timeout in {timeout}ms");
     let mut openssl = spawn(&command, Some(timeout)).expect("Could not start openssl process");
 
     while let Ok(out) = openssl.exp_regex("Enter PKCS#11 .* PIN for .*:") {
@@ -211,7 +211,8 @@ fn extract(extract: Extract) {
     };
 
     let command = format!(
-        "openssl cms -verify -noverify -inform DER -in {} -out {}",
+        "openssl cms -verify -noverify -inform DER \
+        -in \"{}\" -out \"{}\"",
         input_path.display(),
         output_path.display()
     );
@@ -219,7 +220,7 @@ fn extract(extract: Extract) {
     let timeout = 5000;
 
     info!("Running command: {command}");
-    info!("Will timeout in {timeout}ms");
+    debug!("Will timeout in {timeout}ms");
     let mut openssl = spawn(&command, Some(timeout)).expect("Could not start openssl process");
 
     let status = openssl
