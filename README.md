@@ -1,24 +1,18 @@
-Si tratta di un semplice wrapper su openssl che include al suo interno le librerie necessarie per utilizzare le chiavette di firma bit4id di infocert. Io ho solo questo tipo di chiave e non ho potuto provare con nessun'altra.
+# firmina
 
-E' possibile scaricare l'eseguibile e metterlo in ~/.local/bin per poter usare firmina dal terminale in qualsiasi momento
+Un semplice strumento da riga di comando per firmare digitalmente in CADES (.p7m/.p7s) usando le chiavette di firma bit4id di Infocert.
 
-**openssl deve essere installato per far funzionare il programma.**
+Fa internamente uso di openssl (che dev'essere già installato per funzionare) ma si porta dietro le librerie necessarie per utilizzare le chiavette PKCS#11 e in particolare i driver proprietari per le chiavi bit4id usate da Infocert.
+
+È possibile scaricarlo dentro `~/.local/bin` in modo da averlo nel PATH e usarlo negli script o in qualsiasi terminale.
+
+## Perché?
+
+Il supporto per le firme digitali su Linux non è un granché, gli strumenti che esistono sono pesanti, gestiti da aziende private che vogliono solo sbarrare la spunta del supporto a linux.
+
+## Utilizzo
 
 Molto facile da usare, basta vedere l'output del comando di help:
-
-```
-❯ firmina --help
-Usage: firmina [OPTIONS] <INPUT_PATH>
-
-Arguments:
-  <INPUT_PATH>  File da firmare
-
-Options:
-  -p, --pin <PIN>                  Pin della firma
-  -o, --output-path <OUTPUT_PATH>  Percorso del file firmato
-  -d, --detach                     Se produrre la firma separatamente
-  -h, --help                       Print help
-```
 
 ```
 ❯ firmina sign --help
