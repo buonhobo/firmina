@@ -2,6 +2,7 @@ use std::{
     fs::{File, create_dir_all},
     io::{Error, Write},
     path::PathBuf,
+    str::FromStr,
 };
 
 use askama::Template;
@@ -12,8 +13,12 @@ use log::{debug, error, info};
 use rexpect::spawn;
 use tempfile::tempdir;
 
+use crate::cades::{EncapContent, build_content_info, get_certificate_from_pkcs11};
+
 const LIBBIT4IDXPKI: &[u8] = include_bytes!("../assets/libbit4xpki.so");
 const PKCS11PROV: &[u8] = include_bytes!("../assets/pkcs11prov.so");
+
+mod cades;
 
 #[derive(clap::Parser, Debug)]
 struct Cli {
@@ -55,8 +60,18 @@ struct Extract {
 
 fn main() {
     env_logger::Builder::from_env(Env::default().default_filter_or("firmina=info")).init();
-    let cli = Cli::parse();
 
+    let res = build_content_info(
+        &EncapContent {
+            detach: false,
+            data: b"hello".to_vec(),
+        },
+        &PathBuf::from("/var/home/buonhobo/Documents/firmina/assets/libbit4xpki.so"),
+    );
+    dbg!(res);
+    return;
+
+    let cli = Cli::parse();
     match cli.command {
         Command::Sign(sign) => sign_outer(sign),
         Command::Extract(e) => extract(e),
