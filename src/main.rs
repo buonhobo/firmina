@@ -1,22 +1,35 @@
 use std::{
-    fs::{File, create_dir_all},
+    fs::{self, File},
     io::{Error, Write},
     path::PathBuf,
-    str::FromStr,
 };
 
-use askama::Template;
 use clap::Parser;
+use cryptoki::types::AuthPin;
 use dialoguer::Password;
 use env_logger::Env;
-use log::{debug, error, info};
-use rexpect::spawn;
+use log::debug;
 use tempfile::tempdir;
 
-use crate::cades::{EncapContent, build_content_info, get_certificate_from_pkcs11};
+use crate::cades::sign::{EncapContent, build_content_info};
 
+#[cfg(target_os = "linux")]
 const LIBBIT4IDXPKI: &[u8] = include_bytes!("../assets/libbit4xpki.so");
-const PKCS11PROV: &[u8] = include_bytes!("../assets/pkcs11prov.so");
+
+#[cfg(target_os = "linux")]
+const LIB_NAME: &str = "libbit4xpki.so";
+
+#[cfg(target_os = "windows")]
+const LIBBIT4IDXPKI: &[u8] = include_bytes!("../assets/bit4xpki.dll");
+
+#[cfg(target_os = "windows")]
+const LIB_NAME: &str = "bit4xpki.dll";
+
+#[cfg(target_os = "macos")]
+const LIBBIT4IDXPKI: &[u8] = include_bytes!("../assets/libbit4xpki.dylib");
+
+#[cfg(target_os = "macos")]
+const LIB_NAME: &str = "libbit4xpki.dylib";
 
 mod cades;
 
@@ -60,18 +73,8 @@ struct Extract {
 
 fn main() {
     env_logger::Builder::from_env(Env::default().default_filter_or("firmina=info")).init();
-
-    let res = build_content_info(
-        &EncapContent {
-            detach: false,
-            data: b"hello".to_vec(),
-        },
-        &PathBuf::from("/var/home/buonhobo/Documents/firmina/assets/libbit4xpki.so"),
-    );
-    dbg!(res);
-    return;
-
     let cli = Cli::parse();
+
     match cli.command {
         Command::Sign(sign) => sign_outer(sign),
         Command::Extract(e) => extract(e),
@@ -82,13 +85,13 @@ fn sign_outer(sign_command: Sign) {
     debug!("Creating temporary directory to extract the needed libraries");
     let tempdir =
         tempdir().expect("Could not create a temporary directory for the necessary libraries");
-    let config_path =
+    let libbit4xpki =
         extract_libs(tempdir.path().into()).expect("Could not extract the necessary openssl libs");
 
-    sign(sign_command, config_path);
+    sign(sign_command, libbit4xpki);
 }
 
-fn sign(sign_command: Sign, openssl_conf: PathBuf) {
+fn sign(sign_command: Sign, libbit4xpki: PathBuf) {
     let Sign {
         pin,
         input_path,
@@ -112,93 +115,27 @@ fn sign(sign_command: Sign, openssl_conf: PathBuf) {
     let output_path =
         output_path.unwrap_or(input_path.with_added_extension(if detach { "p7s" } else { "p7m" }));
 
-    let command = format!(
-        "openssl cms -sign -cades -binary {detach} -outform DER \
-        -in \"{}\" -out \"{}\" \
-        -signer \"pkcs11:object=DS%20User%20Certificate3;type=cert\" \
-        -inkey \"pkcs11:object=DS%20User%20Private%20Key%203;type=private\" \
-        -config {}",
-        input_path.display(),
-        output_path.display(),
-        openssl_conf.display(),
-        detach = if detach { "" } else { "-nodetach" }
+    let res = build_content_info(
+        &EncapContent {
+            detach: false,
+            data: fs::read(input_path).unwrap(),
+        },
+        &libbit4xpki,
+        &AuthPin::from(pin),
     );
-
-    let timeout = 5000;
-
-    info!("Running command: {command}");
-    debug!("Will timeout in {timeout}ms");
-    let mut openssl = spawn(&command, Some(timeout)).expect("Could not start openssl process");
-
-    while let Ok(out) = openssl.exp_regex("Enter PKCS#11 .* PIN for .*:") {
-        openssl
-            .send_line(&pin)
-            .expect("Could not send PIN to openssl");
-        debug!("Forwarding openssl output: \n{}", out.0.trim());
-    }
-
-    let status = openssl
-        .process()
-        .wait()
-        .expect("Failed while waiting for openssl to exit");
-
-    match status {
-        rexpect::process::WaitStatus::Exited(_, 0) => {
-            info!("Done. The output file is: {}", output_path.display())
-        }
-        rexpect::process::WaitStatus::Exited(_, s) => {
-            error!(
-                "openssl finished with status {}:\n{}",
-                s,
-                openssl.exp_eof().unwrap()
-            );
-        }
-        s => panic!("The openssl command is in an unexpected state: {:?}", s),
-    };
+    fs::write(output_path, rasn::der::encode(&res).unwrap()).unwrap();
+    return;
 }
 
 fn extract_libs(temp_dir: PathBuf) -> Result<PathBuf, Error> {
     debug!("Extracting libs into {}", temp_dir.display());
-    let openssl_conf = temp_dir.join("openssl.conf");
-    let pkcs11prov = temp_dir.join("pkcs11prov.so");
-    let libbit4xpki = temp_dir.join("libbit4xpki.so");
+    let libbit4xpki = temp_dir.join(LIB_NAME);
 
-    debug!("Creating temporary directory {}", temp_dir.display());
-    create_dir_all(&temp_dir)?;
-
-    debug!("Extracting {}", pkcs11prov.display());
-    let mut file = File::create(&pkcs11prov)?;
-    file.write_all(PKCS11PROV)?;
     debug!("Extracting {}", libbit4xpki.display());
     let mut file = File::create(&libbit4xpki)?;
     file.write_all(LIBBIT4IDXPKI)?;
 
-    debug!("Rendering openssl.conf template");
-    let contents = OpensslConf::new(pkcs11prov.clone(), libbit4xpki.clone())
-        .render()
-        .expect("Could not render openssl_conf template");
-
-    debug!("Writing openssl.conf to {}", openssl_conf.display());
-    let mut file = File::create(&openssl_conf)?;
-    file.write_all(contents.as_bytes())?;
-
-    Ok(openssl_conf)
-}
-
-#[derive(Template)]
-#[template(path = "openssl_conf")]
-struct OpensslConf {
-    pkcs11prov: PathBuf,
-    libbit4xpki: PathBuf,
-}
-
-impl OpensslConf {
-    fn new(pkcs11prov: PathBuf, libbit4xpki: PathBuf) -> Self {
-        OpensslConf {
-            pkcs11prov,
-            libbit4xpki,
-        }
-    }
+    Ok(libbit4xpki)
 }
 
 fn extract(extract: Extract) {
@@ -225,39 +162,5 @@ fn extract(extract: Extract) {
         }
     };
 
-    let command = format!(
-        "openssl cms -verify -noverify -inform DER \
-        -in \"{}\" -out \"{}\"",
-        input_path.display(),
-        output_path.display()
-    );
-
-    let timeout = 5000;
-
-    info!("Running command: {command}");
-    debug!("Will timeout in {timeout}ms");
-    let mut openssl = spawn(&command, Some(timeout)).expect("Could not start openssl process");
-
-    let status = openssl
-        .process()
-        .wait()
-        .expect("Failed while waiting for openssl to exit");
-
-    match status {
-        rexpect::process::WaitStatus::Exited(_, 0) => {
-            debug!(
-                "Forwarding openssl output: \n{}",
-                openssl.exp_eof().unwrap()
-            );
-            info!("Done. The output file is: {}", output_path.display())
-        }
-        rexpect::process::WaitStatus::Exited(_, s) => {
-            error!(
-                "openssl finished with status {}:\n{}",
-                s,
-                openssl.exp_eof().unwrap()
-            );
-        }
-        s => panic!("The openssl command is in an unexpected state: {:?}", s),
-    };
+    todo!()
 }

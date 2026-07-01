@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-askama = "0.16.0"
+chrono = "0.4.45"
 clap = { version = "4.6.1", features = ["derive"] }
 cryptoki = "0.12.0"
 dialoguer = "0.12.0"
@@ -14,5 +14,5 @@ rasn = "0.28.13"
 rasn-cms = "0.28.13"
 rasn-pkix = "0.28.13"
 rasn-smime = "0.28.13"
-rexpect = "0.7.1"
+sha2 = "0.11.0"
 tempfile = "3.27.0"
