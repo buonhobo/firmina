@@ -5,9 +5,10 @@ edition = "2024"
 
 [dependencies]
 chrono = "0.4.45"
-clap = { version = "4.6.1", features = ["derive"] }
+clap = { version = "4.6.1", features = ["derive","env"] }
 cryptoki = "0.12.0"
 dialoguer = "0.12.0"
+digest-io = "0.1.0"
 env_logger = "0.11.11"
 log = "0.4.33"
 rasn = "0.28.13"
@@ -16,3 +17,4 @@ rasn-pkix = "0.28.13"
 rasn-smime = "0.28.13"
 sha2 = "0.11.0"
 tempfile = "3.27.0"
+thiserror = "2.0.18"

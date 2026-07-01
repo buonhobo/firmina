@@ -1,17 +1,16 @@
 use std::{
     fs::{self, File},
-    io::{Error, Write},
+    io::{self, BufReader, BufWriter, Error, Write},
     path::PathBuf,
 };
 
 use clap::Parser;
-use cryptoki::types::AuthPin;
 use dialoguer::Password;
 use env_logger::Env;
-use log::debug;
+use log::{debug, info};
 use tempfile::tempdir;
 
-use crate::cades::sign::{EncapContent, build_content_info};
+use crate::{cades::Cades, pkcs11::PkcsSigner};
 
 #[cfg(target_os = "linux")]
 const LIBBIT4IDXPKI: &[u8] = include_bytes!("../assets/libbit4xpki.so");
@@ -32,6 +31,7 @@ const LIBBIT4IDXPKI: &[u8] = include_bytes!("../assets/libbit4xpki.dylib");
 const LIB_NAME: &str = "libbit4xpki.dylib";
 
 mod cades;
+mod pkcs11;
 
 #[derive(clap::Parser, Debug)]
 struct Cli {
@@ -41,25 +41,32 @@ struct Cli {
 
 #[derive(clap::Subcommand, Debug)]
 enum Command {
-    ///Firma un documento in CADES usando una smart key
-    Sign(Sign),
-    ///Estrai il contenuto di un file p7m
+    /// Generate a CADES signature using your smart card
+    Sign(SignArgs),
+    /// Extract the payload of a CADES .p7m signature
     Extract(Extract),
 }
 
 #[derive(clap::Args, Debug)]
-struct Sign {
-    ///Pin della chiave per la firma
-    #[arg(short, long)]
-    pin: Option<String>,
-    ///Percorso del file firmato, se non specificato viene messo a fianco all'originale
-    #[arg(short, long)]
-    output_path: Option<PathBuf>,
-    ///Se produrre la firma separatamente, falso di default
+pub struct SignArgs {
+    /// File to sign
+    pub file: PathBuf,
+
+    /// Treat the input as an existing CAdES container
+    #[arg(long, short, default_value_t = false)]
+    pub cades: bool,
+
+    /// Whether to generate an attached or detached signature.
     #[arg(short, long, default_value_t = false)]
-    detach: bool,
-    ///File da firmare
-    input_path: PathBuf,
+    pub detach: bool,
+
+    /// Smart card PIN. If omitted, it will be requested interactively.
+    #[arg(short, long, env = "FIRMINA_PIN")]
+    pub pin: Option<String>,
+
+    /// Output path.
+    #[arg(short, long)]
+    pub output: Option<PathBuf>,
 }
 
 #[derive(clap::Args, Debug)]
@@ -76,32 +83,54 @@ fn main() {
     let cli = Cli::parse();
 
     match cli.command {
-        Command::Sign(sign) => sign_outer(sign),
+        Command::Sign(sign_args) => sign(sign_args),
         Command::Extract(e) => extract(e),
     }
 }
 
-fn sign_outer(sign_command: Sign) {
+fn sign(sign_command: SignArgs) {
     debug!("Creating temporary directory to extract the needed libraries");
     let tempdir =
         tempdir().expect("Could not create a temporary directory for the necessary libraries");
     let libbit4xpki =
         extract_libs(tempdir.path().into()).expect("Could not extract the necessary openssl libs");
 
-    sign(sign_command, libbit4xpki);
-}
-
-fn sign(sign_command: Sign, libbit4xpki: PathBuf) {
-    let Sign {
-        pin,
-        input_path,
-        output_path,
+    let SignArgs {
+        file,
+        cades,
         detach,
+        pin,
+        output,
     } = sign_command;
 
-    if !(input_path.exists() && input_path.is_file()) {
-        panic!("{} does not exist or is not a file", input_path.display())
+    if !(file.exists() && file.is_file()) {
+        panic!("{} does not exist or is not a file", file.display())
     }
+
+    debug!("determining output path");
+
+    let filename = file.file_name().expect("input file name is not valid");
+
+    let extension = if detach { "p7s" } else { "p7m" };
+
+    let default_name = PathBuf::from(filename).with_added_extension(extension);
+
+    let output_path = match output {
+        Some(path) if path.is_dir() => path.join(&default_name),
+        Some(path) => path,
+        None => default_name,
+    };
+
+    info!("loading input file");
+    let mut cades_wrapper = if cades {
+        debug!("loading preexisting cades file");
+        let content = fs::read(file).expect("could not read input cades file");
+        Cades::from_attached_signature(&content).expect("could not parse input cades file")
+    } else {
+        debug!("loading payload into new cades object");
+        let payload = BufReader::new(File::open(file).unwrap());
+        Cades::new(payload)
+    };
 
     debug!("Asking user for PIN");
     let pin = match pin {
@@ -112,18 +141,21 @@ fn sign(sign_command: Sign, libbit4xpki: PathBuf) {
             .expect("Could not get a PIN"),
     };
 
-    let output_path =
-        output_path.unwrap_or(input_path.with_added_extension(if detach { "p7s" } else { "p7m" }));
+    info!("signing file");
+    cades_wrapper
+        .sign(PkcsSigner::new(pin, &libbit4xpki).expect("could not load smart card device"))
+        .expect("could not sign cades file using smart card");
 
-    let res = build_content_info(
-        &EncapContent {
-            detach: false,
-            data: fs::read(input_path).unwrap(),
-        },
-        &libbit4xpki,
-        &AuthPin::from(pin),
-    );
-    fs::write(output_path, rasn::der::encode(&res).unwrap()).unwrap();
+    info!("decoding file");
+    let res = if detach {
+        cades_wrapper.finalize_detached()
+    } else {
+        cades_wrapper.finalize_attached()
+    }
+    .expect("could not encode cades signature");
+
+    info!("writing to {}", output_path.display());
+    fs::write(output_path, res).unwrap();
     return;
 }
 
@@ -148,19 +180,35 @@ fn extract(extract: Extract) {
         panic!("{} does not exist or is not a file", input_path.display())
     }
 
-    let output_path = match output_path {
-        Some(p) => p,
-        None => {
-            if input_path.extension().is_some_and(|e| e == "p7m") {
-                input_path
-                    .file_stem()
-                    .expect("Could not get the output path")
-                    .into()
-            } else {
-                input_path.with_added_extension("out")
-            }
-        }
+    info!("loading preexisting cades file");
+    let mut cades_wrapper = {
+        let content = fs::read(&input_path).expect("could not read input cades file");
+        Cades::from_attached_signature(&content).expect("could not parse input cades file")
     };
 
-    todo!()
+    let filename = input_path
+        .file_name()
+        .expect("input file name is not valid");
+
+    let default_name = PathBuf::from(filename)
+        .file_stem()
+        .expect("input file name is not valid")
+        .into();
+
+    let output_path = match output_path {
+        Some(path) if path.is_dir() => path.join(&default_name),
+        Some(path) => path,
+        None => default_name,
+    };
+
+    info!("Writing content to {}", output_path.display());
+    io::copy(
+        cades_wrapper
+            .get_payload()
+            .expect("could not get cades payload"),
+        &mut BufWriter::new(
+            File::create(output_path).expect("could not open output path in write mode"),
+        ),
+    )
+    .expect("there was an error while writing the content");
 }
