@@ -1,3 +1,7 @@
+mod cades;
+mod pades;
+mod pkcs11;
+
 use std::{
     fs::{self, File},
     io::{self, BufReader, BufWriter, Error, Write},
@@ -10,7 +14,7 @@ use env_logger::Env;
 use log::{debug, info};
 use tempfile::tempdir;
 
-use crate::{cades::Cades, pkcs11::PkcsSigner};
+use crate::{cades::Cades, pades::test, pkcs11::PkcsSigner};
 
 #[cfg(target_os = "linux")]
 const LIBBIT4IDXPKI: &[u8] = include_bytes!("../assets/libbit4xpki.so");
@@ -29,9 +33,6 @@ const LIBBIT4IDXPKI: &[u8] = include_bytes!("../assets/libbit4xpki.dylib");
 
 #[cfg(target_os = "macos")]
 const LIB_NAME: &str = "libbit4xpki.dylib";
-
-mod cades;
-mod pkcs11;
 
 #[derive(clap::Parser, Debug)]
 struct Cli {
@@ -80,8 +81,9 @@ struct Extract {
 
 fn main() {
     env_logger::Builder::from_env(Env::default().default_filter_or("firmina=info")).init();
+    test();
+    return;
     let cli = Cli::parse();
-
     match cli.command {
         Command::Sign(sign_args) => sign(sign_args),
         Command::Extract(e) => extract(e),
