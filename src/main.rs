@@ -81,8 +81,6 @@ struct Extract {
 
 fn main() {
     env_logger::Builder::from_env(Env::default().default_filter_or("firmina=info")).init();
-    test();
-    return;
     let cli = Cli::parse();
     match cli.command {
         Command::Sign(sign_args) => sign(sign_args),

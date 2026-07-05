@@ -257,7 +257,7 @@ impl Cades {
             .unwrap_or(SignedAttributes::new());
 
         attrs.insert(get_content_type_attr()?);
-        attrs.insert(get_signing_time_attr()?);
+        attrs.insert(get_signing_time_attr()?); // TODO allow removing this
         attrs.insert(self.get_message_digest_attr()?);
         attrs.insert(self.get_signing_certificate_v2_attr(signer)?);
         Ok(attrs)
