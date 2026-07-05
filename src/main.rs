@@ -14,7 +14,7 @@ use env_logger::Env;
 use log::{debug, info};
 use tempfile::tempdir;
 
-use crate::{cades::Cades, pades::test, pkcs11::PkcsSigner};
+use crate::{cades::Cades, pades::sign_pdf, pkcs11::PkcsSigner};
 
 #[cfg(target_os = "linux")]
 const LIBBIT4IDXPKI: &[u8] = include_bytes!("../assets/libbit4xpki.so");
@@ -51,32 +51,35 @@ enum Command {
 #[derive(clap::Args, Debug)]
 pub struct SignArgs {
     /// File to sign
-    pub file: PathBuf,
+    pub input: PathBuf,
 
     /// Treat the input as an existing CAdES container
     #[arg(long, short, default_value_t = false)]
     pub cades: bool,
+
+    /// Treat the input as an existing CAdES container
+    #[arg(long, short, default_value_t = false)]
+    pub pades: bool,
 
     /// Whether to generate an attached or detached signature.
     #[arg(short, long, default_value_t = false)]
     pub detach: bool,
 
     /// Smart card PIN. If omitted, it will be requested interactively.
-    #[arg(short, long, env = "FIRMINA_PIN")]
+    #[arg(long, env = "FIRMINA_PIN")]
     pub pin: Option<String>,
 
     /// Output path.
-    #[arg(short, long)]
-    pub output: Option<PathBuf>,
+    pub output: PathBuf,
 }
 
 #[derive(clap::Args, Debug)]
 struct Extract {
+    ///File da estrarre
+    input_path: PathBuf,
     ///Percorso del file estratto, se non specificato viene messo a fianco dell'originale
     #[arg(short, long)]
     output_path: Option<PathBuf>,
-    ///File da estrarre
-    input_path: PathBuf,
 }
 
 fn main() {
@@ -96,41 +99,27 @@ fn sign(sign_command: SignArgs) {
         extract_libs(tempdir.path().into()).expect("Could not extract the necessary openssl libs");
 
     let SignArgs {
-        file,
+        input,
         cades,
         detach,
         pin,
         output,
+        pades,
     } = sign_command;
 
-    if !(file.exists() && file.is_file()) {
-        panic!("{} does not exist or is not a file", file.display())
+    if !(input.exists() && input.is_file()) {
+        panic!("{} does not exist or is not a file", input.display())
     }
 
-    debug!("determining output path");
+    if output.is_dir() {
+        panic!(
+            "{} is a directory, output must include the name of the output file",
+            output.display()
+        )
+    }
 
-    let filename = file.file_name().expect("input file name is not valid");
-
-    let extension = if detach { "p7s" } else { "p7m" };
-
-    let default_name = PathBuf::from(filename).with_added_extension(extension);
-
-    let output_path = match output {
-        Some(path) if path.is_dir() => path.join(&default_name),
-        Some(path) => path,
-        None => default_name,
-    };
-
-    info!("loading input file");
-    let mut cades_wrapper = if cades {
-        debug!("loading preexisting cades file");
-        let content = fs::read(file).expect("could not read input cades file");
-        Cades::from_attached_signature(&content).expect("could not parse input cades file")
-    } else {
-        debug!("loading payload into new cades object");
-        let payload = BufReader::new(File::open(file).unwrap());
-        Cades::new(payload)
-    };
+    debug!("touching the output file");
+    let mut output_file = fs::File::create(&output).expect("the given output is not valid");
 
     debug!("Asking user for PIN");
     let pin = match pin {
@@ -141,9 +130,37 @@ fn sign(sign_command: SignArgs) {
             .expect("Could not get a PIN"),
     };
 
+    debug!("making pkcs11 signer");
+    let signer = PkcsSigner::new(pin, &libbit4xpki).expect("could not load smart card device");
+
+    if pades {
+        info!("signing pdf file");
+        match sign_pdf(input, signer) {
+            Ok(content) => {
+                info!("writing to {}", output.display());
+                output_file
+                    .write_all(&content)
+                    .expect("could not write signed pdf to disk");
+                return;
+            }
+            Err(e) => panic!("got error while signing pdf file: {}", e),
+        };
+    }
+
+    info!("loading input file");
+    let mut cades_wrapper = if cades {
+        debug!("loading preexisting cades file");
+        let content = fs::read(input).expect("could not read input cades file");
+        Cades::from_attached_signature(&content).expect("could not parse input cades file")
+    } else {
+        debug!("loading payload into new cades object");
+        let payload = BufReader::new(File::open(input).unwrap());
+        Cades::new(payload)
+    };
+
     info!("signing file");
     cades_wrapper
-        .sign(PkcsSigner::new(pin, &libbit4xpki).expect("could not load smart card device"))
+        .sign(signer)
         .expect("could not sign cades file using smart card");
 
     info!("decoding file");
@@ -154,8 +171,8 @@ fn sign(sign_command: SignArgs) {
     }
     .expect("could not encode cades signature");
 
-    info!("writing to {}", output_path.display());
-    fs::write(output_path, res).unwrap();
+    info!("writing to {}", output.display());
+    output_file.write_all(&res).unwrap();
     return;
 }
 

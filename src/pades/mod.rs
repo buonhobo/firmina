@@ -1,5 +1,4 @@
 use std::{
-    fs,
     io::{Cursor, Write},
     path::PathBuf,
 };
@@ -7,10 +6,18 @@ use std::{
 use hex::ToHex;
 use lopdf::{Object, dictionary};
 
-use crate::{cades::Cades, pkcs11::PkcsSigner};
+use crate::cades::{self, Cades, Signer};
 
-pub fn test() {
-    let mut doc = lopdf::IncrementalDocument::load(PathBuf::from("test.pdf")).unwrap();
+#[derive(Debug, thiserror::Error)]
+pub enum PadesError {
+    #[error(transparent)]
+    Lopdf(#[from] lopdf::Error),
+    #[error(transparent)]
+    Cades(#[from] cades::CadesError),
+}
+
+fn get_unsigned_bytes(input: PathBuf) -> Result<Vec<u8>, PadesError> {
+    let mut doc = lopdf::IncrementalDocument::load(input)?;
     let now = chrono::Utc::now();
     let m = now.format("D:%Y%m%d%H%M%SZ").to_string();
     let sig_id = doc.new_document.add_object(dictionary! {
@@ -19,7 +26,6 @@ pub fn test() {
         "M" => Object::string_literal(m),
         "SubFilter" => "ETSI.CAdES.detached",
 
-        // Fixed-width placeholder so you can patch it later.
         "ByteRange" => vec![
             Object::Integer(0),
             Object::Integer(9999999999),
@@ -27,7 +33,6 @@ pub fn test() {
             Object::Integer(9999999999),
         ],
 
-        // Hex string placeholder.
         "Contents" => Object::String(
             vec![0x0 as u8; 1024 * 4 ],
             lopdf::StringFormat::Hexadecimal,
@@ -39,22 +44,18 @@ pub fn test() {
 
     let sig_num = match doc
         .get_prev_documents()
-        .catalog()
-        .unwrap()
+        .catalog()?
         .get(b"AcroForm")
         .cloned()
     {
         Ok(Object::Reference(acro_id)) => {
             println!("here");
-            doc.opt_clone_object_to_new_document(acro_id).unwrap();
+            doc.opt_clone_object_to_new_document(acro_id)?;
             let fields = doc
                 .new_document
-                .get_dictionary_mut(acro_id)
-                .unwrap()
-                .get_mut(b"Fields")
-                .unwrap()
-                .as_array_mut()
-                .unwrap();
+                .get_dictionary_mut(acro_id)?
+                .get_mut(b"Fields")?
+                .as_array_mut()?;
             fields.push(field_id.into());
             fields.len()
         }
@@ -66,15 +67,10 @@ pub fn test() {
             let catalog_id = doc
                 .get_prev_documents()
                 .trailer
-                .get(b"Root")
-                .unwrap()
-                .as_reference()
-                .unwrap();
-            doc.opt_clone_object_to_new_document(catalog_id).unwrap();
-            doc.new_document
-                .catalog_mut()
-                .unwrap()
-                .set("AcroForm", acro_id);
+                .get(b"Root")?
+                .as_reference()?;
+            doc.opt_clone_object_to_new_document(catalog_id)?;
+            doc.new_document.catalog_mut()?.set("AcroForm", acro_id);
             1
         }
     };
@@ -83,19 +79,23 @@ pub fn test() {
         field_id,
         dictionary! {
             "FT" => "Sig",
-            // "F" => "132",
+            "F" => "132",
             "Subtype" => "Widget",
             "T" => Object::string_literal(format!("Signature {sig_num}")),
             "Type" => "Annot",
-            // "Rect" => vec![Object::Real(0.0);4],
             "V" => sig_id
         }
         .into(),
     );
 
     let mut buffer = vec![];
-    doc.save_to(&mut buffer).unwrap();
+    doc.save_to(&mut buffer)
+        .expect("writing to a vec should not fail, unless you're out of memory");
+    Ok(buffer)
+}
 
+pub fn sign_pdf(input: PathBuf, signer: impl Signer + 'static) -> Result<Vec<u8>, PadesError> {
+    let mut buffer = get_unsigned_bytes(input)?;
     let byterange_pattern = "/ByteRange[0 9999999999 9999999999 9999999999]";
     let byterange_pos = buffer
         .windows(byterange_pattern.len())
@@ -137,23 +137,18 @@ pub fn test() {
     let mut signature_content = &mut buffer[(placeholder_lt + 1)..(placeholder_gt)];
     let mut cades = Cades::new(Cursor::new(signed_content));
     cades
-        .sign(
-            PkcsSigner::new(
-                "xxxxxxxx".to_string(),
-                &PathBuf::from("assets/libbit4xpki.so"),
-            )
-            .expect("could not load smart card device"),
-        )
+        .sign(signer)
         .expect("could not sign cades file using smart card");
 
     let signature = cades
-        .finalize_detached()
-        .unwrap()
+        .finalize_detached()?
         .encode_hex::<Vec<char>>()
         .into_iter()
         .map(|c| c as u8)
         .collect::<Vec<u8>>();
-    signature_content.write(&signature).unwrap();
+    signature_content
+        .write(&signature)
+        .expect("writing to a preallocated vec should not fail");
 
-    fs::write(PathBuf::from("test-signed.pdf"), buffer).unwrap();
+    Ok(buffer)
 }
