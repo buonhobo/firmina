@@ -1,5 +1,7 @@
 use std::path::{Path, PathBuf};
 
+use log::debug;
+
 use crate::{
     cli::structs::{Cli, ExtractArgs, Mode, SignArgs},
     core::{
@@ -26,6 +28,7 @@ impl TryFrom<Cli> for Config {
                     Some(output) => output,
                     None => infer_extract_output(&input)?,
                 };
+                debug!("parsing extract command");
                 let res = Config::Extract(ExtractConfig { output, input });
                 Ok(res)
             }
@@ -37,6 +40,7 @@ impl TryFrom<Cli> for Config {
                 output,
                 detached,
             }) => {
+                debug!("validating input path");
                 validate_input(&input)?;
 
                 let mode = match mode {
@@ -57,6 +61,7 @@ impl TryFrom<Cli> for Config {
                     None => ask_pin()?,
                 };
 
+                debug!("parsing sign command");
                 let signature = SignatureType::Pkcs11 { pin };
                 let config = Config::Sign(SignConfig {
                     config_type: sign_config_type,
@@ -70,6 +75,7 @@ impl TryFrom<Cli> for Config {
 }
 
 fn validate_input(input: &PathBuf) -> Result<(), CliParserError> {
+    debug!("validating input file: {}", input.display());
     if input.is_file() {
         Ok(())
     } else {
@@ -85,6 +91,7 @@ fn infer_sign_output(
     mode: &Mode,
     detached: bool,
 ) -> Result<std::path::PathBuf, CliParserError> {
+    debug!("inferring output path");
     match mode {
         Mode::Pades => {
             let stem = input.file_stem().ok_or_else(|| {
@@ -94,17 +101,20 @@ fn infer_sign_output(
                 )
             })?;
 
+            debug!("inferred pades output");
             Ok(input.with_file_name(format!("{}.signed.pdf", stem.to_string_lossy())))
         }
 
         Mode::Generic | Mode::Cades | Mode::CadesDetached => {
             let ext = if detached { "p7s" } else { "p7m" };
+            debug!("inferred {ext} output");
             Ok(PathBuf::from(format!("{}.{}", input.display(), ext)))
         }
     }
 }
 
 fn ask_pin() -> Result<String, CliParserError> {
+    debug!("asking user for password");
     let pin = dialoguer::Password::new()
         .with_prompt("Enter your PIN")
         .interact()?;
@@ -112,9 +122,11 @@ fn ask_pin() -> Result<String, CliParserError> {
 }
 
 fn infer_sign_mode(input: &Path, content: &Option<PathBuf>) -> Result<Mode, CliParserError> {
+    debug!("inferring signing signing mode");
     if let Some(content) = content {
         validate_input(content)?;
 
+        debug!("detected detached signing mode");
         return match input.extension().and_then(|e| e.to_str()) {
             Some("p7s") => Ok(Mode::CadesDetached),
             _ => Err(clap::Error::raw(
@@ -135,7 +147,7 @@ fn infer_sign_mode(input: &Path, content: &Option<PathBuf>) -> Result<Mode, CliP
 
 fn infer_extract_output(input: &Path) -> Result<std::path::PathBuf, CliParserError> {
     let extension = input.extension().and_then(|e| e.to_str());
-
+    debug!("inferring extract output path");
     if extension != Some("p7m") {
         return Err(clap::Error::raw(
             clap::error::ErrorKind::InvalidValue,
@@ -154,6 +166,7 @@ fn infer_sign_config_type(
     output: PathBuf,
     detached: bool,
 ) -> Result<SignConfigType, CliParserError> {
+    debug!("inferring signature config type");
     let input = match mode {
         // Content was provided and it should have been
         Mode::CadesDetached => SignConfigType::Cades(CadesConfig::Detached(DetachedCadesConfig {

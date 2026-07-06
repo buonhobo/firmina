@@ -4,6 +4,7 @@ use std::{
 };
 
 use digest_io::IoWrapper;
+use log::debug;
 use rasn::types::{Any, Integer, ObjectIdentifier, OctetString};
 use rasn_cms::*;
 use rasn_pkix::GeneralName;
@@ -43,6 +44,7 @@ pub enum CadesError {
 }
 
 fn get_signed_data(bytes: &[u8]) -> Result<SignedData, CadesError> {
+    debug!("decoding content_info from bytes");
     let content_info: ContentInfo = rasn::der::decode(bytes)?;
 
     let signed_data_id: ObjectIdentifier = ID_SIGNED_DATA.into();
@@ -51,6 +53,8 @@ fn get_signed_data(bytes: &[u8]) -> Result<SignedData, CadesError> {
             content_info.content_type,
         ));
     }
+
+    debug!("decoding signed_data from bytes");
     let signed_data: SignedData = rasn::der::decode(&content_info.content.into_bytes())?;
     Ok(signed_data)
 }
@@ -58,6 +62,7 @@ fn get_signed_data(bytes: &[u8]) -> Result<SignedData, CadesError> {
 fn get_encap_content(
     encap_content_info: EncapsulatedContentInfo,
 ) -> Result<Cursor<Vec<u8>>, CadesError> {
+    debug!("getting encapsulated data from cades");
     let data_id: ObjectIdentifier = ID_DATA.into();
     if encap_content_info.content_type != data_id {
         return Err(CadesError::UnsupportedContentType(
@@ -117,10 +122,12 @@ impl Cades {
     }
 
     pub fn sign(&mut self, mut signer: Box<dyn Signer>) -> Result<(), CadesError> {
+        debug!("adding certificate to cades package");
         let cert_choice =
             CertificateChoices::Certificate(Box::new(signer.get_certificate()?.clone()));
         self.certificates.insert(cert_choice);
 
+        debug!("adding signer_info to cades package");
         let signer_info = self.get_signer_info(signer)?;
         self.signer_infos.insert(signer_info);
 
