@@ -1,7 +1,7 @@
 mod builder;
 mod signer;
 
-pub use builder::{Cades, CadesError};
+pub use builder::{Cades, CadesError, Payload};
 use rasn::types::Oid;
 use rasn_cms::AlgorithmIdentifier;
 pub use signer::{Signer, SignerError};

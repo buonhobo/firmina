@@ -28,17 +28,14 @@ enum SignatureType {
 
 #[derive(Debug, thiserror::Error)]
 pub enum CadesError {
-    #[error(transparent)]
+    #[error("there was an error when encoding the cades file: {0}")]
     Decode(#[from] rasn::error::DecodeError),
-    #[error(transparent)]
+    #[error("there was an error when encoding the cades signature: {0}")]
     Encode(#[from] rasn::error::EncodeError),
-
     #[error("unsupported content type: {0}")]
     UnsupportedContentType(ObjectIdentifier),
-
-    #[error(transparent)]
+    #[error("there was an IO error: {0}")]
     IO(#[from] std::io::Error),
-
     #[error("missing encapsulated content")]
     EncapsulatedContentMissing,
     #[error("there was a signer specific error: {0}")]
@@ -93,6 +90,24 @@ impl Cades {
         Ok(result)
     }
 
+    pub fn from_detached_sig_content(
+        bytes: &[u8],
+        payload: impl Payload + 'static,
+    ) -> Result<Self, CadesError> {
+        let signed_data = get_signed_data(bytes)?;
+
+        let certificates = signed_data.certificates.unwrap_or(CertificateSet::new());
+        let signer_infos = signed_data.signer_infos;
+
+        let result = Self {
+            payload: Box::new(payload),
+            certificates,
+            signer_infos,
+        };
+
+        Ok(result)
+    }
+
     pub fn new(payload: impl Payload + 'static) -> Self {
         Self {
             payload: Box::new(payload),
@@ -101,12 +116,7 @@ impl Cades {
         }
     }
 
-    pub fn get_payload(&mut self) -> Result<&mut Box<dyn Payload>, CadesError> {
-        self.payload.seek(SeekFrom::Start(0))?;
-        Ok(&mut self.payload)
-    }
-
-    pub fn sign(&mut self, mut signer: impl Signer + 'static) -> Result<(), CadesError> {
+    pub fn sign(&mut self, mut signer: Box<dyn Signer>) -> Result<(), CadesError> {
         let cert_choice =
             CertificateChoices::Certificate(Box::new(signer.get_certificate()?.clone()));
         self.certificates.insert(cert_choice);
@@ -157,7 +167,7 @@ impl Cades {
         }
     }
 
-    fn get_payload_bytes(&mut self) -> Result<Vec<u8>, CadesError> {
+    pub fn get_payload_bytes(&mut self) -> Result<Vec<u8>, CadesError> {
         let mut buf = vec![];
         self.payload.seek(SeekFrom::Start(0))?;
         self.payload.read_to_end(&mut buf)?;
@@ -217,10 +227,7 @@ impl Cades {
             .into()
     }
 
-    fn get_signer_info(
-        &mut self,
-        mut signer: impl Signer + 'static,
-    ) -> Result<SignerInfo, CadesError> {
+    fn get_signer_info(&mut self, mut signer: Box<dyn Signer>) -> Result<SignerInfo, CadesError> {
         //RFC5652 says:
         //  If the SignerIdentifier is issuerAndSerialNumber,
         //      then the version MUST be 1.
@@ -250,7 +257,7 @@ impl Cades {
 
     fn get_signed_attrs(
         &mut self,
-        signer: &mut (impl Signer + 'static),
+        signer: &mut Box<dyn Signer>,
     ) -> Result<SignedAttributes, CadesError> {
         let mut attrs = signer
             .get_additional_signed_attributes()?
@@ -265,7 +272,7 @@ impl Cades {
 
     fn get_signing_certificate_v2_attr(
         &self,
-        signer: &mut (impl Signer + 'static),
+        signer: &mut Box<dyn Signer>,
     ) -> Result<rasn_cms::Attribute, CadesError> {
         let algo = get_digest_algorithm();
         let certificate = signer.get_certificate()?;
