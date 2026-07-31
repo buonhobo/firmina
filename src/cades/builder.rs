@@ -31,7 +31,7 @@ enum SignatureType {
 pub enum CadesError {
     #[error("there was an error when encoding the cades file: {0}")]
     Decode(#[from] rasn::error::DecodeError),
-    #[error("there was an error when encoding the cades signature: {0}")]
+    #[error("there was an error when decoding the cades signature: {0}")]
     Encode(#[from] rasn::error::EncodeError),
     #[error("unsupported content type: {0}")]
     UnsupportedContentType(ObjectIdentifier),

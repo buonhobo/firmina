@@ -1,24 +1,19 @@
-use std::fs::{self, File};
+use std::fs::{self};
 
 use log::debug;
 
 use crate::{
-    cades::{Cades, Payload},
+    cades::Cades,
     core::{ExtractConfig, error::CoreError},
 };
-
-fn extract_inner<R: Payload + 'static>(cades_attached: R) -> Result<Vec<u8>, CoreError> {
-    let res = Cades::new(cades_attached).get_payload_bytes()?;
-    Ok(res)
-}
 
 pub fn extract(config: ExtractConfig) -> Result<(), CoreError> {
     let ExtractConfig { input, output } = config;
 
-    debug!("opening input file");
-    let bytes = File::open(input)?;
+    debug!("opening input file {input:?}");
+    let bytes = fs::read(input)?;
     debug!("extracting content from input file");
-    let extracted = extract_inner(bytes)?;
+    let extracted = Cades::from_attached_signature(&bytes)?.get_payload_bytes()?;
     debug!("writing content from input file");
     fs::write(output, extracted)?;
     Ok(())
