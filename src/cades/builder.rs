@@ -45,7 +45,7 @@ pub enum CadesError {
 
 fn get_signed_data(bytes: &[u8]) -> Result<SignedData, CadesError> {
     debug!("decoding content_info from bytes");
-    let content_info: ContentInfo = rasn::der::decode(bytes)?;
+    let content_info: ContentInfo = rasn::ber::decode(bytes)?;
 
     let signed_data_id: ObjectIdentifier = ID_SIGNED_DATA.into();
     if content_info.content_type != signed_data_id {
@@ -55,7 +55,7 @@ fn get_signed_data(bytes: &[u8]) -> Result<SignedData, CadesError> {
     }
 
     debug!("decoding signed_data from bytes");
-    let signed_data: SignedData = rasn::der::decode(&content_info.content.into_bytes())?;
+    let signed_data: SignedData = rasn::ber::decode(&content_info.content.into_bytes())?;
     Ok(signed_data)
 }
 
