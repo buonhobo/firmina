@@ -60,7 +60,7 @@ impl PkcsSigner {
             use std::path::PathBuf;
 
             debug!("trying to load it from system32 first");
-            let pkcs11 = Pkcs11::new(PathBuf::from("C:/Windows/System32"))?;
+            let pkcs11 = Pkcs11::new(PathBuf::from("C:/Windows/System32/bit4xpki.dll"))?;
             debug!("it worked");
         }
         let pkcs11 = Pkcs11::new(module.path())?;
