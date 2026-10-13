@@ -51,8 +51,20 @@ impl PkcsSigner {
         let mut module = NamedTempFile::new()?;
         module.write_all(LIBBIT4IDXPKI)?;
 
-        debug!("initializing pkcs11 smart card reader");
+        debug!(
+            "loading bit4id from module in path {}",
+            module.path().display()
+        );
+        #[cfg(target_os = "windows")]
+        {
+            use std::path::PathBuf;
+
+            debug!("trying to load it from system32 first");
+            let pkcs11 = Pkcs11::new(PathBuf::from("C:/Windows/System32"))?;
+            debug!("it worked");
+        }
         let pkcs11 = Pkcs11::new(module.path())?;
+        debug!("initializing pkcs11 smart card reader");
         pkcs11.initialize(CInitializeArgs::new(CInitializeFlags::OS_LOCKING_OK))?;
         debug!("finding smart cart slot");
         let slots = pkcs11.get_slots_with_token()?;
