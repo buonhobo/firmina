@@ -1,5 +1,3 @@
-use std::io::Write;
-
 use cryptoki::{
     context::{CInitializeArgs, CInitializeFlags, Pkcs11},
     object::{Attribute, AttributeType, ObjectClass},
@@ -9,7 +7,7 @@ use cryptoki::{
 use log::debug;
 use rasn::types::Oid;
 use rasn_cms::{AlgorithmIdentifier, Certificate, SignatureAlgorithmIdentifier, SignatureValue};
-use tempfile::NamedTempFile;
+use tempfile::{TempDir, tempdir};
 
 use crate::{
     cades::{CadesError, Signer, SignerError},
@@ -49,7 +47,7 @@ impl SignerError for PkcsSignerError {}
 pub struct PkcsSigner {
     session: Session,
     certificate: Option<Certificate>,
-    _tempfile: Option<NamedTempFile>,
+    _tempfile: Option<TempDir>,
 }
 impl PkcsSigner {
     pub fn new(pin: String) -> Result<Self, PkcsSignerError> {
@@ -58,7 +56,7 @@ impl PkcsSigner {
             BIT4XPKI_PATH
         );
 
-        let mut module = None;
+        let mut module_dir = None;
 
         let pkcs11 = match Pkcs11::new(BIT4XPKI_PATH) {
             Ok(pkcs11) => pkcs11,
@@ -66,15 +64,13 @@ impl PkcsSigner {
                 debug!("got error: '{}'", { err });
                 debug!("Could not load bit4xpki from system library, trying bundled file...");
                 debug!("extracting library to temp file");
-                let mut named_file = NamedTempFile::new()?;
-                named_file.write_all(BIT4XPKI_LIB)?;
-                debug!(
-                    "loading bit4id from module in path {}",
-                    named_file.path().display()
-                );
-                let res = Pkcs11::new(named_file.path())?;
-                module = Some(named_file);
-                res
+                let temp_dir = tempdir()?;
+                let dll_path = temp_dir.path().join(BIT4XPKI_PATH);
+                module_dir = Some(temp_dir);
+                std::fs::write(&dll_path, BIT4XPKI_LIB)?;
+
+                debug!("loading bit4id from module in path {}", dll_path.display());
+                Pkcs11::new(dll_path)?
             }
         };
 
@@ -91,7 +87,7 @@ impl PkcsSigner {
         let res = Self {
             session,
             certificate: None,
-            _tempfile: module,
+            _tempfile: module_dir,
         };
 
         Ok(res)
