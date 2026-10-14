@@ -17,13 +17,19 @@ use crate::{
 };
 
 #[cfg(target_os = "linux")]
-const LIBBIT4IDXPKI: &[u8] = include_bytes!("../assets/libbit4xpki.so");
+const BIT4XPKI_PATH: &'static str = "libbit4xpki.so";
+#[cfg(target_os = "linux")]
+const BIT4XPKI_LIB: &[u8] = include_bytes!("../assets/libbit4xpki.so");
 
 #[cfg(target_os = "windows")]
-const LIBBIT4IDXPKI: &[u8] = include_bytes!("../assets/bit4xpki.dll");
+const BIT4XPKI_PATH: &'static str = "bit4xpki.dll";
+#[cfg(target_os = "windows")]
+const BIT4XPKI_LIB: &[u8] = include_bytes!("../assets/bit4xpki.dll");
 
 #[cfg(target_os = "macos")]
-const LIBBIT4IDXPKI: &[u8] = include_bytes!("../assets/libbit4xpki.dylib");
+const BIT4XPKI_PATH: &'static str = "libbit4xpki.dylib";
+#[cfg(target_os = "macos")]
+const BIT4XPKI_LIB: &[u8] = include_bytes!("../assets/libbit4xpki.dylib");
 
 #[derive(Debug, thiserror::Error)]
 pub enum PkcsSignerError {
@@ -43,27 +49,35 @@ impl SignerError for PkcsSignerError {}
 pub struct PkcsSigner {
     session: Session,
     certificate: Option<Certificate>,
-    _tempfile: NamedTempFile,
+    _tempfile: Option<NamedTempFile>,
 }
 impl PkcsSigner {
     pub fn new(pin: String) -> Result<Self, PkcsSignerError> {
-        debug!("extracting library to temp file");
-        let mut module = NamedTempFile::new()?;
-        module.write_all(LIBBIT4IDXPKI)?;
-
         debug!(
-            "loading bit4id from module in path {}",
-            module.path().display()
+            "Trying to load bit4id library from system: {}",
+            BIT4XPKI_PATH
         );
-        #[cfg(target_os = "windows")]
-        {
-            use std::path::PathBuf;
 
-            debug!("trying to load it from system32 first");
-            let pkcs11 = Pkcs11::new(PathBuf::from("C:/Windows/System32/bit4xpki.dll"))?;
-            debug!("it worked");
-        }
-        let pkcs11 = Pkcs11::new(module.path())?;
+        let mut module = None;
+
+        let pkcs11 = match Pkcs11::new(BIT4XPKI_PATH) {
+            Ok(pkcs11) => pkcs11,
+            Err(err) => {
+                debug!("got error: '{}'", { err });
+                debug!("Could not load bit4xpki from system library, trying bundled file...");
+                debug!("extracting library to temp file");
+                let mut named_file = NamedTempFile::new()?;
+                named_file.write_all(BIT4XPKI_LIB)?;
+                debug!(
+                    "loading bit4id from module in path {}",
+                    named_file.path().display()
+                );
+                let res = Pkcs11::new(named_file.path())?;
+                module = Some(named_file);
+                res
+            }
+        };
+
         debug!("initializing pkcs11 smart card reader");
         pkcs11.initialize(CInitializeArgs::new(CInitializeFlags::OS_LOCKING_OK))?;
         debug!("finding smart cart slot");
