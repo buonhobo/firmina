@@ -24,8 +24,10 @@ pub enum Command {
     /// Extract the encapsulated content from an attached
     /// CAdES signature (.p7m).
     Extract(ExtractArgs),
-}
 
+    /// Start firmina's Graphical User Interface
+    Gui,
+}
 #[derive(Args, Debug)]
 pub struct ExtractArgs {
     /// Attached CAdES signature (.p7m).

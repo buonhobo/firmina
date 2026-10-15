@@ -49,8 +49,14 @@ impl TryFrom<Cli> for Config {
                 };
 
                 let output = match output {
-                    Some(output) => output,
-                    None => infer_sign_output(&input, &mode, detached)?,
+                    Some(output) => {
+                        if output.is_dir() {
+                            infer_sign_output(&input, &mode, detached, Some(&output))?
+                        } else {
+                            output
+                        }
+                    }
+                    None => infer_sign_output(&input, &mode, detached, None)?,
                 };
 
                 let sign_config_type =
@@ -70,6 +76,7 @@ impl TryFrom<Cli> for Config {
 
                 Ok(config)
             }
+            super::Command::Gui => Ok(Config::Gui),
         }
     }
 }
@@ -90,26 +97,24 @@ fn infer_sign_output(
     input: &Path,
     mode: &Mode,
     detached: bool,
+    output_dir: Option<&Path>,
 ) -> Result<std::path::PathBuf, CliParserError> {
     debug!("inferring output path");
-    match mode {
-        Mode::Pades => {
-            let stem = input.file_stem().ok_or_else(|| {
-                clap::Error::raw(
-                    clap::error::ErrorKind::InvalidValue,
-                    "could not determine output filename",
-                )
-            })?;
-
-            debug!("inferred pades output");
-            Ok(input.with_file_name(format!("{}.signed.pdf", stem.to_string_lossy())))
+    let mapped_input = match mode {
+        Mode::Pades => input.with_extension("signed.pdf"),
+        Mode::Generic => input.with_added_extension(if detached { "p7s" } else { "p7m" }),
+        Mode::Cades | Mode::CadesDetached => {
+            input.with_extension(if detached { "p7s" } else { "p7m" })
         }
-
-        Mode::Generic | Mode::Cades | Mode::CadesDetached => {
-            let ext = if detached { "p7s" } else { "p7m" };
-            debug!("inferred {ext} output");
-            Ok(PathBuf::from(format!("{}.{}", input.display(), ext)))
-        }
+    };
+    match output_dir {
+        None => Ok(mapped_input),
+        Some(output) => Ok(output.join(mapped_input.file_name().ok_or(
+            CliParserError::ClapError(clap::Error::raw(
+                clap::error::ErrorKind::InvalidValue,
+                "the provided path is not a file",
+            )),
+        )?)),
     }
 }
 

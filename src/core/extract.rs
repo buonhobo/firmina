@@ -16,5 +16,6 @@ pub fn extract(config: ExtractConfig) -> Result<(), CoreError> {
     let extracted = Cades::from_attached_signature(&bytes)?.get_payload_bytes()?;
     debug!("writing content from input file");
     fs::write(output, extracted)?;
+    debug!("done writing");
     Ok(())
 }

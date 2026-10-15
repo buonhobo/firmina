@@ -42,6 +42,7 @@ fn sign_pades(config: PadesConfig, signer: Box<dyn Signer>) -> Result<(), CoreEr
     let signed = sign_pdf(input, signer)?;
     debug!("writing signed pdf file");
     fs::write(output, signed)?;
+    debug!("done writing");
     Ok(())
 }
 
@@ -64,6 +65,7 @@ fn sign_cades(config: CadesConfig, signer: Box<dyn Signer>) -> Result<(), CoreEr
             let content = sign_cades_inner(cades, signer, detached)?;
             debug!("writing cades file");
             fs::write(output, content)?;
+            debug!("done writing");
         }
         CadesConfig::Detached(DetachedCadesConfig {
             signature,
@@ -79,6 +81,7 @@ fn sign_cades(config: CadesConfig, signer: Box<dyn Signer>) -> Result<(), CoreEr
             let content = sign_cades_inner(cades, signer, detached)?;
             debug!("writing cades file");
             fs::write(output, content)?;
+            debug!("done writing");
         }
     };
     Ok(())

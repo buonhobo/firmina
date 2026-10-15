@@ -40,7 +40,7 @@ pub enum CadesError {
     #[error("missing encapsulated content")]
     EncapsulatedContentMissing,
     #[error("there was a signer specific error: {0}")]
-    Signer(Box<dyn SignerError>),
+    Signer(Box<dyn SignerError + Send>),
 }
 
 fn get_signed_data(bytes: &[u8]) -> Result<SignedData, CadesError> {

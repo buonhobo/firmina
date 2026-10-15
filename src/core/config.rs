@@ -3,6 +3,7 @@ use std::path::PathBuf;
 pub enum Config {
     Sign(SignConfig),
     Extract(ExtractConfig),
+    Gui,
 }
 
 pub struct ExtractConfig {

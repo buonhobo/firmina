@@ -1,6 +1,7 @@
 mod cades;
 mod cli;
 mod core;
+mod gui;
 mod pades;
 mod pkcs11;
 
@@ -23,6 +24,10 @@ fn main() {
     let res = match config {
         Config::Sign(sign_config) => core::sign(sign_config),
         Config::Extract(extract_config) => core::extract(extract_config),
+        Config::Gui => {
+            gui::entrypoint::main();
+            Ok(())
+        }
     };
     if let Err(e) = res {
         panic!("There was an error while executing the command: {e}");
