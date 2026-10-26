@@ -21,15 +21,19 @@ fn main() {
         Err(e) => panic!("There was an error while parsing the cli parameters: {e}"),
     };
     debug!("executing command");
-    let res = match config {
-        Config::Sign(sign_config) => core::sign(sign_config),
-        Config::Extract(extract_config) => core::extract(extract_config),
+    match config {
+        Config::Sign(sign_config) => {
+            if let Err(e) = core::sign(sign_config) {
+                panic!("There was an error while signing: {e:?}")
+            }
+        }
+        Config::Extract(extract_config) => {
+            if let Err(e) = core::extract(extract_config) {
+                panic!("There was an error while extracting: {e:?}")
+            }
+        }
         Config::Gui => {
             gui::entrypoint::main();
-            Ok(())
         }
     };
-    if let Err(e) = res {
-        panic!("There was an error while executing the command: {e}");
-    }
 }

@@ -17,17 +17,17 @@ use crate::{
 #[cfg(target_os = "linux")]
 const BIT4XPKI_PATH: &'static str = "libbit4xpki.so";
 #[cfg(target_os = "linux")]
-const BIT4XPKI_LIB: &[u8] = include_bytes!("../assets/libbit4xpki.so");
+const BIT4XPKI_LIB: &[u8] = include_bytes!("../assets/library/libbit4xpki.so");
 
 #[cfg(target_os = "windows")]
 const BIT4XPKI_PATH: &'static str = "bit4xpki.dll";
 #[cfg(target_os = "windows")]
-const BIT4XPKI_LIB: &[u8] = include_bytes!("../assets/bit4xpki.dll");
+const BIT4XPKI_LIB: &[u8] = include_bytes!("../assets/library/bit4xpki.dll");
 
 #[cfg(target_os = "macos")]
 const BIT4XPKI_PATH: &'static str = "libbit4xpki.dylib";
 #[cfg(target_os = "macos")]
-const BIT4XPKI_LIB: &[u8] = include_bytes!("../assets/libbit4xpki.dylib");
+const BIT4XPKI_LIB: &[u8] = include_bytes!("../assets/library/libbit4xpki.dylib");
 
 #[derive(Debug, thiserror::Error)]
 pub enum PkcsSignerError {

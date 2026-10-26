@@ -1,0 +1,234 @@
+import {
+    Button,
+    CheckBox,
+    LineEdit,
+    ScrollView,
+} from "std-widgets.slint";
+
+export component MainWindow inherits Window {
+
+    width: 1000px;
+    height: 650px;
+    title: "Firmina";
+
+    in-out property <[string]> files;
+    in-out property <string> output-directory;
+    property <string> pin;
+    in-out property <string> logs;
+
+    callback browse-output-dir();
+    callback add_files();
+    callback sign(files: [string], pin: string, output_dir: string);
+
+    VerticalLayout {
+        padding: 16px;
+        spacing: 16px;
+
+        HorizontalLayout {
+
+            spacing: 16px;
+
+            // LEFT SIDE
+            Rectangle {
+                border-width: 1px;
+                border-color: #303030;
+                background: #202020;
+                border-radius: 8px;
+
+                horizontal-stretch: 2;
+
+                VerticalLayout {
+                    padding: 12px;
+                    spacing: 12px;
+
+                    Text {
+                        text: "Output directory";
+                        font-weight: 600;
+                    }
+
+                    HorizontalLayout {
+                        spacing: 8px;
+                        LineEdit {
+                            text <=> root.output-directory;
+                        }
+
+                        Button {
+                            text: "Browse";
+
+                            clicked => {
+                                root.browse-output-dir();
+                            }
+                        }
+                    }
+
+                    Text {
+                        text: "Files to sign";
+                        font-weight: 600;
+                    }
+
+                    Rectangle {
+                        border-width: 1px;
+                        border-color: #303030;
+                        background: #252525;
+                        border-radius: 8px;
+
+                        vertical-stretch: 1;
+
+                        if (root.files.length == 0): Rectangle {
+                            background: transparent;
+
+                            VerticalLayout {
+                                alignment: center;
+
+                                Text {
+                                    text: "📄";
+                                    font-size: 48px;
+                                    horizontal-alignment: center;
+                                }
+
+                                Text {
+                                    text: "No files selected";
+                                    font-size: 18px;
+                                    font-weight: 600;
+                                    horizontal-alignment: center;
+                                }
+
+                                Text {
+                                    text: "Click here to add files,";
+                                    color: #a0a0a0;
+                                    horizontal-alignment: center;
+                                }
+
+                                Text {
+                                    text: "or use the button below.";
+                                    color: #a0a0a0;
+                                    horizontal-alignment: center;
+                                }
+                            }
+
+                            click := TouchArea {
+                                clicked => {
+                                    root.add_files();
+                                }
+                            }
+                        }
+
+                        if (root.files.length > 0): ScrollView {
+
+                            VerticalLayout {
+                                padding: 8px;
+                                spacing: 2px;
+                                for file[index] in root.files: Rectangle {
+                                    background: #303030;
+                                    border-radius: 8px;
+
+                                    HorizontalLayout {
+
+                                        spacing: 8px;
+                                        height: 35px;
+                                        cross-axis-alignment: center;
+                                        Button {
+                                            text: "✕";
+                                            height: 30px;
+                                            clicked => {
+                                                root.files.remove(index)
+                                            }
+                                        }
+
+                                        Text {
+                                            text: file;
+                                            vertical-alignment: center;
+                                        }
+
+                                        Rectangle {
+                                            horizontal-stretch: 1;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    Button {
+                        text: "Add Files";
+                        clicked => {
+                            root.add-files();
+                        }
+                    }
+
+                    Button {
+                        text: "Clear list";
+
+                        clicked => {
+                            root.files = [];
+                        }
+                    }
+                }
+            }
+                // RIGHT SIDE
+            Rectangle {
+
+                border-width: 1px;
+                border-color: #303030;
+                background: #202020;
+                border-radius: 8px;
+
+                horizontal-stretch: 2;
+
+                VerticalLayout {
+                    padding: 12px;
+                    spacing: 12px;
+
+                    Text {
+                        text: "Logs";
+                        font-weight: 600;
+                    }
+
+                    Rectangle {
+                        border-width: 1px;
+                        border-color: #303030;
+                        background: #252525;
+                        border-radius: 8px;
+
+                        vertical-stretch: 1;
+
+                        ScrollView {
+                            VerticalLayout {
+                            alignment: start;
+                            padding: 8px;
+                            cross-axis-alignment: start;
+
+                            Text {
+                                text: root.logs;
+                            }}
+                        }
+                    }
+
+                    Text {
+                        text: "PIN";
+                        font-weight: 600;
+                    }
+
+                    LineEdit {
+                        text <=> root.pin;
+                        input-type: password;
+                    }
+
+                    Text {
+                        text: "Signature";
+                        font-weight: 600;
+                    }
+
+                    Button {
+
+                        text: "Sign files";
+
+                        clicked => {
+                            root.sign(root.files,root.pin,root.output-directory);
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

@@ -16,7 +16,7 @@ pub struct Cli {
     pub command: Command,
 }
 
-#[derive(Subcommand, Debug)]
+#[derive(Subcommand, Debug, Default)]
 pub enum Command {
     /// Create a digital signature.
     Sign(SignArgs),
@@ -26,6 +26,7 @@ pub enum Command {
     Extract(ExtractArgs),
 
     /// Start firmina's Graphical User Interface
+    #[default]
     Gui,
 }
 #[derive(Args, Debug)]
