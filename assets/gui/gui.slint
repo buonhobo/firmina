@@ -2,7 +2,7 @@ import {
     Button,
     CheckBox,
     LineEdit,
-    ScrollView,
+    ScrollView, Palette,
 } from "std-widgets.slint";
 
 export component MainWindow inherits Window {
@@ -31,8 +31,8 @@ export component MainWindow inherits Window {
             // LEFT SIDE
             Rectangle {
                 border-width: 1px;
-                border-color: #303030;
-                background: #202020;
+                border-color: Palette.border;
+                background: Palette.control-background;
                 border-radius: 8px;
 
                 horizontal-stretch: 2;
@@ -68,8 +68,8 @@ export component MainWindow inherits Window {
 
                     Rectangle {
                         border-width: 1px;
-                        border-color: #303030;
-                        background: #252525;
+                        border-color: Palette.border;
+                        background: Palette.control-background;
                         border-radius: 8px;
 
                         vertical-stretch: 1;
@@ -95,13 +95,11 @@ export component MainWindow inherits Window {
 
                                 Text {
                                     text: "Click here to add files,";
-                                    color: #a0a0a0;
                                     horizontal-alignment: center;
                                 }
 
                                 Text {
                                     text: "or use the button below.";
-                                    color: #a0a0a0;
                                     horizontal-alignment: center;
                                 }
                             }
@@ -119,7 +117,7 @@ export component MainWindow inherits Window {
                                 padding: 8px;
                                 spacing: 2px;
                                 for file[index] in root.files: Rectangle {
-                                    background: #303030;
+                                    background: Palette.control-background;
                                     border-radius: 8px;
 
                                     HorizontalLayout {
@@ -169,8 +167,8 @@ export component MainWindow inherits Window {
             Rectangle {
 
                 border-width: 1px;
-                border-color: #303030;
-                background: #202020;
+                border-color: Palette.border;
+                background: Palette.control-background;
                 border-radius: 8px;
 
                 horizontal-stretch: 2;
@@ -186,8 +184,8 @@ export component MainWindow inherits Window {
 
                     Rectangle {
                         border-width: 1px;
-                        border-color: #303030;
-                        background: #252525;
+                        border-color: Palette.border;
+                        background: Palette.control-background;
                         border-radius: 8px;
 
                         vertical-stretch: 1;
