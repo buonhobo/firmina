@@ -33,7 +33,9 @@ fn main() {
             }
         }
         Config::Gui => {
-            gui::entrypoint::main();
+            if let Err(e) = gui::entrypoint::main() {
+                panic!("There was an error while running the GUI: {e:?}")
+            };
         }
     };
 }

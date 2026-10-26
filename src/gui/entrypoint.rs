@@ -1,10 +1,10 @@
 // Prevent console window in addition to Slint window in Windows release builds when, e.g., starting the app via file manager. Ignored on other platforms.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use std::{error::Error, path::PathBuf, str::FromStr, thread};
+use std::{error::Error, path::PathBuf, thread};
 
-use log::debug;
-use slint::{Model, ModelRc, SharedString, ToSharedString, VecModel, language::DragAction};
+use anyhow::Context;
+use slint::{Model, ModelRc, ToSharedString};
 
 use crate::{
     cli::{Command::Sign, SignArgs},
@@ -57,52 +57,61 @@ pub fn main() -> Result<(), Box<dyn Error>> {
         let pin = pin.to_string();
         let output_dir = PathBuf::from(&output_dir);
         let weak = weak.clone();
-        thread::spawn(move || {
-            weak.upgrade_in_event_loop(|strong| {
-                strong.set_logs(strong.get_logs() + &format!("Starting signature process...\n"));
-            });
 
-            for file in files {
-                let cli = crate::Cli {
-                    command: Sign(SignArgs {
-                        detached: false,
-                        content: None,
-                        input: file.clone(),
-                        mode: None,
-                        pin: Some(pin.clone()),
-                        output: Some(output_dir.clone()),
-                    }),
-                };
-                weak.upgrade_in_event_loop(move |strong| {
-                    strong
-                        .set_logs(strong.get_logs() + &format!("Signing {}...\n", file.display()));
-                });
-                let cfg: crate::Config = Config::try_from(cli).expect("Config should work");
-                match cfg {
-                    Config::Sign(sign_config) => {
-                        if let Err(e) = crate::core::sign(sign_config) {
-                            weak.upgrade_in_event_loop(move |strong| {
-                                strong.set_logs(
-                                    strong.get_logs() + &format!("There was an error: {e:?}\n"),
-                                );
-                            });
-                        } else {
-                            weak.upgrade_in_event_loop(move |strong| {
-                                strong.set_logs(strong.get_logs() + &format!("Done.\n"));
-                            });
-                        };
-                    }
-                    Config::Extract(_) => panic!(),
-                    Config::Gui => panic!(),
-                }
+        thread::spawn(move || {
+            log(&weak, "Starting signature process...");
+
+            if let Err(e) = sign_files(&weak, &files, &pin, output_dir) {
+                log(&weak, format!("Error: {e:?}"));
             }
-            weak.upgrade_in_event_loop(move |strong| {
-                strong.set_logs(strong.get_logs() + &format!("Finished signing files.\n"));
-            });
+
+            log(&weak, format!("Finished signing files."));
         });
     });
 
     ui.run()?;
+
+    Ok(())
+}
+
+fn log(ui: &slint::Weak<MainWindow>, msg: impl Into<String>) {
+    let msg = msg.into();
+
+    let _ = ui.upgrade_in_event_loop(move |window| {
+        window.set_logs(window.get_logs() + &(msg + "\n"));
+    });
+}
+
+fn sign_files(
+    ui: &slint::Weak<MainWindow>,
+    files: &[PathBuf],
+    pin: &str,
+    output_dir: PathBuf,
+) -> anyhow::Result<()> {
+    for file in files {
+        log(ui, format!("Signing {}...", file.display()));
+
+        let cli = crate::Cli {
+            command: Sign(SignArgs {
+                detached: false,
+                content: None,
+                input: file.to_owned(),
+                mode: None,
+                pin: Some(pin.to_owned()),
+                output: Some(output_dir.to_owned()),
+            }),
+        };
+
+        let cfg = Config::try_from(cli)?;
+
+        let Config::Sign(sign_cfg) = cfg else {
+            anyhow::bail!("Unexpected config variant");
+        };
+
+        crate::core::sign(sign_cfg).context(format!("When trying to sign {}", file.display()))?;
+
+        log(ui, "Done.");
+    }
 
     Ok(())
 }

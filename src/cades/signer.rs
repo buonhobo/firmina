@@ -8,7 +8,7 @@ use crate::cades::CadesError;
 
 pub trait SignerError: Display + Debug {}
 
-impl<E: SignerError + 'static + Send> From<E> for CadesError {
+impl<E: SignerError + 'static + Send + Sync> From<E> for CadesError {
     fn from(value: E) -> Self {
         CadesError::Signer(Box::new(value))
     }
