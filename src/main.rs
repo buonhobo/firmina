@@ -13,6 +13,12 @@ use crate::{cli::Cli, core::Config};
 
 fn main() {
     env_logger::Builder::from_env(Env::default().default_filter_or("firmina=info")).init();
+    if std::env::args().len() == 1 {
+        if let Err(e) = gui::entrypoint::main() {
+            panic!("There was an error while running the GUI: {e:?}")
+        };
+        return;
+    }
     debug!("parsing cli commands");
     let cli = Cli::parse();
     debug!("preparing backend config");

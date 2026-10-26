@@ -9,7 +9,7 @@ use clap::{Args, Parser, Subcommand, ValueEnum};
     author = "buonhobo",
     version,
     about = "sign files with cades or pades using bit4id smart cards",
-    long_about = None
+    long_about = None,
 )]
 pub struct Cli {
     #[command(subcommand)]
